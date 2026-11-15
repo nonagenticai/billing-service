@@ -1,0 +1,239 @@
+{
+  "_source": {
+    "commit": "9f34a6eddf3763c22317efe58e1128403e0ab1a6",
+    "file": "docs/openapi.json",
+    "method": "get",
+    "path": "/internal/licenses",
+    "repo": "nonagenticai/licenses",
+    "response_sha256": "62e2b851335e00affb9e7a9e362f95ffd80576a229596d3fa27f28df2e70b8d6",
+    "schema_sha256": [
+      {
+        "schema": "AppInfo",
+        "sha256": "3a28c5c4d52271b310b7daa0874556ac783ef08f0b655f757fe38ce03b81b7d4"
+      },
+      {
+        "schema": "InternalLicenseResponse",
+        "sha256": "b8900dac42b739ef0b1f2885fdd7913153d3050b9edb2440d54b60d47ef89da2"
+      },
+      {
+        "schema": "PlanInfo",
+        "sha256": "e128e3af33b59c8aaa6bfc7746b29e1e0a448644b3bc0807bbfc7cf3b03f6664"
+      }
+    ],
+    "status": "200"
+  },
+  "response": {
+    "items": {
+      "$ref": "#/components/schemas/InternalLicenseResponse"
+    },
+    "title": "Response Internal List Licenses",
+    "type": "array"
+  },
+  "schemas": {
+    "AppInfo": {
+      "description": "App information for license response",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "key",
+        "name"
+      ],
+      "title": "AppInfo",
+      "type": "object"
+    },
+    "InternalLicenseResponse": {
+      "description": "Enriched license response for internal service consumers",
+      "properties": {
+        "app": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/AppInfo"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "effective_status": {
+          "title": "Effective Status",
+          "type": "string"
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Expires At"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "is_dependency": {
+          "default": false,
+          "title": "Is Dependency",
+          "type": "boolean"
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Metadata"
+        },
+        "plan": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/PlanInfo"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "quota_override": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Per-licence monthly request quota; wins over plan.quota_monthly. Consumers must use `quota_override if not None else plan.quota_monthly`.",
+          "title": "Quota Override"
+        },
+        "starts_at": {
+          "title": "Starts At",
+          "type": "string"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "subject_id": {
+          "title": "Subject Id",
+          "type": "string"
+        },
+        "tenant_id": {
+          "title": "Tenant Id",
+          "type": "string"
+        },
+        "token_budget_override": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Per-licence monthly token budget; wins over plan.token_budget_monthly. Consumers must use `token_budget_override if not None else plan.token_budget_monthly`.",
+          "title": "Token Budget Override"
+        }
+      },
+      "required": [
+        "id",
+        "tenant_id",
+        "subject_id",
+        "status",
+        "effective_status",
+        "starts_at",
+        "expires_at",
+        "metadata"
+      ],
+      "title": "InternalLicenseResponse",
+      "type": "object"
+    },
+    "PlanInfo": {
+      "description": "Plan information for license response",
+      "properties": {
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "quota_monthly": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Quota Monthly"
+        },
+        "rate_limit_burst": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Rate Limit Burst"
+        },
+        "rate_limit_rpm": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Rate Limit Rpm"
+        },
+        "token_budget_monthly": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Token Budget Monthly"
+        }
+      },
+      "required": [
+        "id",
+        "code",
+        "name"
+      ],
+      "title": "PlanInfo",
+      "type": "object"
+    }
+  }
+}

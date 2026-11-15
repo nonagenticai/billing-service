@@ -1,0 +1,154 @@
+[project]
+license = "Apache-2.0"
+name = "billing-service"
+version = "0.1.0"
+description = "Usage metering, cost tracking, and billing service for the nonagentic.ai platform"
+requires-python = ">=3.14"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.34.0",
+    "pydantic>=2.10.0",
+    "pydantic-settings>=2.7.0",
+    "sqlalchemy[asyncio]>=2.0.36",
+    "psycopg[binary,pool]>=3.2.0",
+    "redis[hiredis]>=5.2.0",
+    "structlog>=24.4.0",
+    "httpx>=0.28.0",
+    "opentelemetry-api>=1.45.1",
+    "opentelemetry-sdk>=1.29.0",
+    "opentelemetry-instrumentation-fastapi>=0.50b0",
+    "opentelemetry-instrumentation-httpx>=0.50b0",
+    "opentelemetry-exporter-otlp-proto-http>=1.29.0",
+    "orjson>=3.11.6",
+    "jinja2>=3.1.6",
+    "pyjwt[crypto]>=2.15.1",
+    "pyyaml>=6.0.3",
+    "alembic>=1.18.4",
+    "apscheduler>=3.11.2",
+    "prometheus-client>=0.21.0",
+    "prometheus-fastapi-instrumentator>=7.0.0",
+    "cachetools>=5.5.0",
+]
+
+[dependency-groups]
+dev = [
+    # PYSEC-2026-3721: pip < 26.2 is vulnerable (pulled in transitively by pip-audit -> pip-api -> pip)
+    "pip>=26.2",
+    "pytest>=9.0.2",
+    "pytest-asyncio>=0.25.0",
+    "httpx>=0.28.0",
+    "ruff>=0.15",
+    "ty>=0.0.104",
+    "fakeredis[json,lua]>=2.26.0",
+    "detect-secrets>=1.5.0",
+    "pytest-timeout>=2.3.1",
+    "pip-audit>=2.10.0",
+    "bandit>=1.7.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+src = ["src"]
+
+[tool.ruff.lint]
+# E/F/I/N/W/UP — original baseline (pyflakes, naming, pyupgrade, etc.)
+# B   — bugbear: mutable default args, useless expressions, raise-from
+# SIM — simplification: combinable with-statements, redundant boolean checks
+# C4  — comprehensions: unnecessary generators, dict/list/set comprehension smells
+# PIE — misc lint: unnecessary range starts, dict.get redundancy
+# RET — return-style: unnecessary assign-then-return, missing else after return
+# ASYNC — blocking calls in async functions (real correctness issue)
+select = ["E", "F", "I", "N", "W", "UP", "B", "SIM", "C4", "PIE", "RET", "ASYNC"]
+# E501  — line length is enforced via formatter, not linter
+# B008  — FastAPI's `Depends(...)`/`Query(...)` are MEANT to be in defaults; the
+#         Annotated form is stylistic only and noisy to retrofit across all routers
+ignore = ["E501", "B008"]
+
+[tool.ruff.lint.per-file-ignores]
+# Migrations are mostly DDL string literals + op.execute() blocks; SIM/RET
+# style rules don't apply meaningfully.
+"alembic/versions/*.py" = ["SIM", "RET"]
+
+[tool.ty.environment]
+python-version = "3.14"
+python = ".venv"
+extra-paths = ["src"]
+
+[tool.ty.terminal]
+# Errors fail the gate; warnings (deprecations reported by third-party packages) do not.
+error-on-warning = false
+
+# ── Pre-push hook environment ────────────────────────────────────────────────
+# The pre-push hook (gitops-production/scripts/hooks/) runs this suite before it
+# lets a push through, and forwards exactly ONE key from here into pytest's
+# environment: DATABASE_URL (its allowlist is literally ` DATABASE_URL `). This
+# repo had no [tool.local-ci] table at all, so the hook forwarded nothing and
+# tests/conftest.py fell through to a HARDCODED DSN — the defect fixed in this
+# commit.
+#
+# ⚠️ This value is a LAST RESORT for the push gate only, and it is SHARED: every
+# worktree of this repo that pushes without its own override lands here, and
+# NOTHING currently detects that collision — the session fixture DROP/CREATEs
+# the schema, so two simultaneous pushes still corrupt each other. An
+# advisory-lock interlock was drafted for exactly this and is NOT in this
+# commit: it was measured to refuse a concurrent holder correctly, but it also
+# destabilised the full suite (a clean-HEAD control run was 2333 green; with the
+# interlock the same suite produced intermittent failures in
+# test_unrolled_truncate_gate and test_migration_chain_matches_models). It needs
+# its own change with the mechanism understood, not a guess bolted onto this fix.
+#
+# ✅ THE PER-LANE OVERRIDE IS `TEST_DATABASE_URL`, which conftest prefers over
+# DATABASE_URL. Export it in your shell and it wins everywhere — ad-hoc pytest
+# AND git push — giving this lane a private database. Do that; do not treat the
+# value below as the address to develop against.
+[tool.local-ci.env]
+# ⛔ DO NOT DELETE, AND DO NOT TEMPLATE THIS LINE. Read the reason before you
+# "fix" it — it looks exactly like the hardcoded DSN this commit removed from
+# tests/conftest.py, and it is NOT the same thing.
+#
+# WHAT IT IS: a SHARED literal. Every lane that runs `git push` without its own
+# TEST_DATABASE_URL exported lands on this one database (container
+# billing-test-pg-5502), and the session fixture DROP SCHEMA ... CASCADEs it.
+# Two concurrent pushes still corrupt each other. Nothing detects that.
+#
+# WHY IT IS STILL HERE ANYWAY: the pre-push hook forwards exactly one key from
+# this table — DATABASE_URL — and conftest now REFUSES to run with no DSN at
+# all. Remove or template this line and every lane's `git push` hard-fails on
+# the pre-push suite before it can push anything, including the push that would
+# fix it. That outage is strictly worse than the collision it would close, so
+# the collision is accepted here DELIBERATELY and closed by the override below
+# instead.
+#
+# HOW TO NOT BE AFFECTED: `export TEST_DATABASE_URL=...` with your OWN free port
+# and OWN database name. conftest prefers it over DATABASE_URL, so it isolates
+# you on the push path too, without touching this file.
+#
+# HOW TO ACTUALLY CLOSE IT: give the push path a per-lane database. The unproven
+# lead is the advisory-lock interlock described above (it needs
+# lock_conn.commit()/AUTOCOMMIT investigated first). Do that in its own change.
+DATABASE_URL = "postgresql+psycopg://postgres:postgres@127.0.0.1:5502/metering_test"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+testpaths = ["tests"]
+pythonpath = ["src"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v"
+timeout = 60
+markers = [
+    "unit: marks tests as unit tests",
+    "integration: marks tests as integration tests",
+    "nil_tenant: test deliberately asserts the NIL_TENANT_ID sink path; exempts it from the conftest nil-tenant tripwire",
+]

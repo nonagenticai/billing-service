@@ -1,0 +1,58 @@
+# Router-servable CONCRETE models whose correct price differs from their
+# provider's rung-4 default — so each MUST carry its own (provider, model) row
+# in scripts/initial_pricing.yaml, else it silently mis-bills off the default.
+# Enforced by tests/test_pricing_drift.py.
+#
+# WHY this list is hand-curated (not auto-derived): most `model` strings that
+# reach billing are tier aliases (tier-flash/-medium), the abstract `local-llm`
+# name, or generic labels (model="deepseek", agent/task names) that CORRECTLY
+# resolve to a provider default. Auto-deriving from the alias map would list
+# those and cause false failures. Only concrete vendor ids whose real price
+# DIFFERS from the provider default belong here.
+#
+# Sources of truth (re-read; do not trust memory):
+#   - gitops-production clusters/strato/services/inference-router/
+#     providers-configmap.yaml  `model_aliases`   (router-servable ids + tiers)
+#   - worker_management .../provider_catalog.py    (concrete vendor ids +
+#     _BILLING_PROVIDER_OVERRIDES → the provider string billing actually sees)
+#   - empirically: SELECT DISTINCT provider, model FROM billing_cost_events.
+#
+# RE-SYNC recipe: when the configmap/catalog adds a concrete vendor model whose
+# vendor list price differs from its provider's default rate, add it here AND
+# seed a per-model row in initial_pricing.yaml. test_pricing_drift fails until both.
+#
+# DELIBERATELY NOT listed (they correctly rely on a default — no drift):
+#   - pgx-local/* : the pgx-local default == its single self-hosted rate
+#     ($10/$25), so every served_model prices identically; a per-model row is
+#     redundant.
+#   - inference_router tier-*/local-llm/default : these are the alias rows
+#     themselves, covered by test_pricing_coverage — not concrete vendor ids.
+#   - model="deepseek", tier labels, agent/task names : intentionally priced at
+#     a provider default (documented inline in initial_pricing.yaml).
+
+router_servable_models:
+  # Anthropic Claude — a dated snapshot id (…-20251001) prices like its base id,
+  # NOT the Opus provider-default. Both router (provider=claude) and BYO
+  # (provider=anthropic) emit paths carry the concrete id.
+  - provider: claude
+    model: claude-haiku-4-5
+  - provider: claude
+    model: claude-haiku-4-5-20251001
+  - provider: anthropic
+    model: claude-haiku-4-5
+  - provider: anthropic
+    model: claude-haiku-4-5-20251001
+
+  # DeepSeek concrete ids. Under `deepseek` they already have rows; under
+  # `inference_router` the raw ids reach billing on some emit paths and were the
+  # 35-70x over-bill (they hit the $10/$25 inference_router default).
+  - provider: deepseek
+    model: deepseek-v4-flash
+  - provider: deepseek
+    model: deepseek-v4-pro
+  - provider: deepseek
+    model: deepseek-chat
+  - provider: inference_router
+    model: deepseek-v4-flash
+  - provider: inference_router
+    model: deepseek-v4-pro

@@ -1,0 +1,138 @@
+# licences registry snapshot — tenants that billing's LEGACY_TENANT_NAMES shim must resolve.
+#
+# SOURCE OF TRUTH, not a derivative. This file is the OUTPUT of a query against
+# the live `licenses` database on the prod postgres primary (worker4). It is NOT
+# generated from src/tenancy.py, and it must never be: a fixture derived from the
+# thing it checks can only ever agree with it, and the test that reads it would
+# pass against any shim at all — including one that has drifted.
+#
+# Format: <name>|<uuid>, one row per registered tenant, ordered by name.
+#
+# REFRESH (from a host with tailnet access to worker4):
+#     scripts/refresh_tenant_registry_fixture.sh
+#
+# which runs, verbatim:
+#     ssh -i "$SSH_KEY" "$WORKER4_HOST" \
+#       "sudo -u postgres psql -d licenses -Atc \
+#          \"select name||'|'||id from tenants order by name\""
+#
+# ⛔ The refresh REPLACES this list. It does NOT know about
+# RENAMED_TENANT_ALIASES — a name the registry has renamed disappears from the
+# query output, and dropping it from the shim 400s every caller still sending the
+# old spelling. So after refreshing: re-run the test. It fails naming every shim
+# key the registry no longer holds, and each one must be either declared in
+# RENAMED_TENANT_ALIASES (the correct answer for a rename) or removed only once
+# the old spelling is MEASURED absent from live traffic. Age is not evidence.
+#
+# Captured: 2026-10-15 from the licences registry, database `licenses`.
+aa-agents|0195f48b-d000-7000-8000-000000000003
+aa-tenant-proof|019fa340-a5e4-709d-8047-f555f063068a
+ahtapol|0195f48b-d000-7000-8000-000000000101
+better-results-group|019fa2b2-1632-7c85-9403-8a7d9e74ab39
+book-fulfillment|01a1109c-f895-7766-ba28-6ea56e56a5f7
+cdmsfirst|01a1830f-377c-7730-9d86-6f9bc4894c36
+cdmsfirst-prod|019f7b5f-64d3-71d5-81dc-0b9a53bf64c7
+claude|01a03dd9-941a-7300-ad03-f099dcf93864
+claude-test|01a13b8c-66b8-709e-81f4-2358fe957a15
+cp-e2e-2026-10-13|01a135dd-698e-7000-864d-205ec171ad33
+cp-e2e-test-1014|01a139e2-b2aa-7000-b40a-9f8074c69f87
+cp-e2e-test-20261014|01a13b00-781f-7000-ae12-8a5c44864508
+default-anon|00000000-0000-0000-0000-000000000000
+demo|0195f48b-d000-7000-8000-000000000103
+e2e-smoke-qe95guoq|019de842-c92b-7579-a7e6-5b79642d6c80
+e2e-smoke-xtzz3028|019de842-c92b-75b0-9502-88a436832a67
+fr-test|019efaa0-512b-733e-9e98-b1ac82a6f7ee
+fr-test-user|0195f48b-d000-7000-8000-000000000099
+george-dekker|90819343-37f8-4604-966b-d35368b8a167
+internal-bench|01a1117c-d9b0-72fc-aeda-a9d459931e41
+internal-dev-core|01a1117c-d9b0-72fc-aeda-a9d3504ea2d5
+internal-dev-marketing|01a1117c-d9b0-72fc-aeda-a9d216a14d53
+internal-probe|01a115e9-7334-71bd-b264-3c4a396114de
+isolation-probe-test|01a0fdb8-f785-7785-843d-0799f306cbbd
+marketing|019edc61-9495-76bc-b65f-c92a8e6880df
+merqi|639c333a-1613-4fbc-aa14-a7b1430dc0db
+n8n-dev|019de842-c92a-7e37-8fdd-eb0d8c5396f9
+n8n-dev-portal-realm|0195f48b-d000-7000-8000-000000000001
+n8n-test|019de842-c92b-752e-b39c-30d64950e1cc
+netcare|01a139d8-18df-7000-90f1-7c60120f509e
+netcare-cp|01a13548-ab8a-7000-a2e0-497a779754a6
+netcare-legacy|01a0ef72-31af-7561-936a-b8383b5fb6c8
+nonagentic|019fe708-424a-7a31-bce8-da19020dc62b
+nonagentic-gtm|e4f70a83-81ee-429a-abca-6999e3a0d24f
+ola-armatys|019edc48-6060-76e9-8d8f-2e720e12c609
+platform-core|0195f48b-d000-7000-8000-000000000002
+portal|019de842-c92b-7564-b932-98240d274b3b
+portal-render-e2e|01a1113b-674f-72b0-a84b-dc746d39afca
+procedure-improvement|0195f48b-d000-7000-8000-000000000005
+prompt-improvement|0195f48b-d000-7000-8000-000000000004
+raisemytickets|01a0ae64-3703-76a6-8e05-9a4826428d32
+rmt-e2e|019fb1f4-7342-7bb7-8ac6-2ff2fcda645f
+sales|019edc61-9495-7ee7-93dd-ea9e1f687f42
+subhankar-kag|019edc1e-313d-779d-9330-fe013c705be8
+subhankar-kag-2|918c1948-0f9e-4f1d-b15e-7ca1a950a184
+svc-cdmsfirst-n8n|97d33e0a-fc56-5ad6-8c32-1ccc565ff327
+svc-coding-ai|e32db873-6197-5cbe-8d6f-f800ff015b37
+svc-coding-analysis|3533c51e-19e6-5a29-a636-7269f941a256
+svc-coding-containers|71189c26-d5c2-50ef-94b6-719db4af5f9f
+svc-coding-gateway|e7b1d902-5bae-5bd8-9fe2-1c6ff29b7b63
+svc-coding-github|83ecc1ad-54bd-5de7-9b56-0f1707dcba8e
+svc-coding-realtime|41020e1b-8ff6-54dd-bb36-725da5046e5c
+svc-coding-repo-jobs|91c77f12-c7fa-5ab1-bfd8-25f8e1874315
+svc-coding-security|6aeb0926-6ffc-59ce-b668-59eeb318de78
+svc-coding-testing|526378a8-0b20-5784-b5ce-d0fdc7a42d2b
+svc-commonpractice|b8e94a81-dbd3-5f75-8a58-45deceaef000
+svc-control-relay|9b820614-8b03-5d1c-856b-d4c51a5b145c
+svc-control-service-w2v-partner|c44cf5dd-c721-57e3-acb2-64305acb3dc0
+svc-core-app-mlx|631a1fc3-41a1-5ebd-8515-4b8617cb585f
+svc-discovery-engine|f5e6212e-5a16-5a16-9864-0ce1ab1a08ee
+svc-evidence-review|b1122557-09db-534b-8a38-0dde459a7564
+svc-fr-backend|d4804d48-2761-50d7-9302-fb366fbcad1c
+svc-fr-backend-kag|dfb9ca84-05f9-510b-93ae-b8dda21ebd4a
+svc-fr-backend-pm|db988f11-b36f-53ad-83a3-ebefb0657d83
+svc-growth|365ef796-56c9-5b32-b28a-c05489ed59c9
+svc-hirag|9ec0a01d-78cd-54e1-9f40-8e48e93f6707
+svc-hirag-graph|c361d84f-8a42-5dfa-aaa9-0339658f22ae
+svc-image-e2e-customer|dd4eb320-59d8-5359-bb4a-5adb8bb77a01
+svc-image-gateway|d6cffb03-db1b-58c6-94ba-e8a1d9f3c507
+svc-inference-router|b56c7aae-2fbc-56fe-bab2-6240e320c8ac
+svc-ingestion|0e2bc289-1cd5-5d82-a100-e4073f501058
+svc-ingestion-graph|ef9735e5-0c71-56e0-852b-3ca601177bb6
+svc-kag|291c4cf5-fc88-56d5-9254-ac02869728a8
+svc-kag-eval-r46|4dd78137-4f5f-531d-b58b-385bded3914c
+svc-kag-frontend-pm|f8c3ee18-b02c-5a6f-a5af-f79aaf1fce23
+svc-kag-graph|a8035a90-4210-5900-9529-45b3b90b72a2
+svc-kag-graph-reconciler|17c61bc0-027b-5964-8d0f-e0e9d32c3cd0
+svc-kag-karma|f172bf91-2dd5-5386-ae73-704f31f4f0a9
+svc-kag-orchestrator-graph|15fc5490-690b-5b60-9449-d42b9548386c
+svc-karma|e929ef57-5670-5c26-85ac-eab725866516
+svc-marketing|63e46a0c-e2b0-5ae3-a04f-c9888280827e
+svc-marketing-t-c46c9378|c46c9378-eef5-57d6-b5f9-307e86db915d
+svc-media-discovery|bbdb4939-4c4c-5b4c-8286-3ffd3921b8a7
+svc-modality-gateway|0a04dd67-40ae-5c02-a087-0a6227cfb3f2
+svc-modality-gpuproof-e2e|a2ce50eb-f0d7-54e5-8ffe-975aece729c5
+svc-modality-gw-e2e|65a6416c-a372-5a00-b50e-6ab5193f4a6d
+svc-modality-phaseb-e2e|74c2fd20-da0c-57ba-9020-dd4dba736a63
+svc-n8n-aa|92e8d32c-850a-52ff-997e-b6f5fcb94231
+svc-n8n-local-conveyor|5f868d42-03f8-51f0-a93c-3e83070dc196
+svc-nlp-graph|4eeb06ef-1312-5bc2-8a60-0945d30519cb
+svc-nlp-service|c13dfe28-f5af-5656-8786-51f34b2629ec
+svc-platform-console|a127721c-3b2f-5c4a-b77f-8a413c2c055f
+svc-probe-gwflip-20260813|d535bf4c-062b-5108-b992-a685b6ad59a4
+svc-probe-tenant-header-20260812|eba3af2b-6d9b-5e24-8294-6eddca146d8f
+svc-probe-tenant-header-20260812b|0fbaaead-1752-54e2-843a-e4bbd946bb48
+svc-probe-vouch-20260813|593bc1cc-eb77-55b7-b8a7-20c469077609
+svc-requirements|01a0138c-a6bc-75e7-9263-e3894f2eb94c
+svc-requirements-pm|55d23f87-49c9-5ddb-b34b-b3c9c75d27ad
+svc-sales|506b6958-4c12-5fda-9822-a67508e4bb08
+svc-scientific-processor|16f5fb5b-141d-5fc1-b513-24ca7d4a31b4
+svc-scientific-processor-graph|c9669d15-b85a-567f-b2dd-534ddad0c7c1
+svc-tts-synth|333c001e-03eb-5508-901c-b05409b0df85
+svc-vlm-smoke|a3c1e697-6c05-5717-9612-f7fc8743d92d
+svc-w2v-cell-m4-gate-tenant|4cc78f13-456c-5243-a026-5c4c1b67aa77
+svc-w2v-cell-m4-orchestrator|396f3448-ccc1-584a-92f8-a1a3de3fbe1d
+svc-w2v-cell-m4-partner|baad6bac-7541-5d9f-b209-423b94bcdc5f
+svc-w2v-shared|4af92cd8-4d13-54f1-aaf9-94ee2caaf823
+system|00000000-0000-0000-0000-000000000001
+tenant-dev|3806d6e5-4698-571e-9bb2-22ffd076ac73
+w2v-partner-provisioning|01a11fae-b5df-72be-9c58-41bc7d791f17
+zz-s62-probe-a1|019fef97-bc1a-74b1-89e6-5d0574210203

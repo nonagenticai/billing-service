@@ -1,0 +1,45 @@
+{
+  "_what": "Golden 200 body for GET /internal/licenses?status=active, hand-built to exercise every field in CONSUMED_FIELDS plus the nullable plan/app path. It is NOT decorative: tests/test_licences_contract.py validates it against the vendored licences schema AND replays every production field read over it, so a wrong sample is a red build, not a quiet lie.",
+  "body": [
+    {
+      "id": "8f1c0b3a-6d4e-4c2b-9a11-0f2e5d7c4b60",
+      "tenant_id": "3b9d2f47-1c85-4e0a-8f63-27a4e1d90c55",
+      "subject_id": "1a7e4c92-5b30-4d88-9e21-6c0f3a8b7d14",
+      "status": "active",
+      "effective_status": "active",
+      "starts_at": "2026-01-01T00:00:00+00:00",
+      "expires_at": "2027-01-01T00:00:00+00:00",
+      "metadata": {"seat_count": 12},
+      "token_budget_override": 100000,
+      "quota_override": 0,
+      "plan": {
+        "id": "c4e8a17b-2f60-4a93-b5d2-8e1706c93f4a",
+        "code": "pro",
+        "name": "Pro",
+        "quota_monthly": 250000,
+        "token_budget_monthly": 40000000,
+        "rate_limit_rpm": 600,
+        "rate_limit_burst": 60
+      },
+      "app": {
+        "id": "d2b6f490-3a17-4c85-9be0-51f7c8a2306d",
+        "key": "w2v",
+        "name": "Word2Vec"
+      }
+    },
+    {
+      "id": "5c3a9e71-8b42-4f06-a9d3-72e1b40c8a97",
+      "tenant_id": "6e0f8b23-9d71-4a5c-8302-b41f7c69e2d8",
+      "subject_id": "9d41c7a0-6e28-4b13-85f7-3a0c2e91b64f",
+      "status": "active",
+      "effective_status": "active",
+      "starts_at": "2026-03-14T09:30:00+00:00",
+      "expires_at": null,
+      "metadata": null,
+      "token_budget_override": null,
+      "quota_override": null,
+      "plan": null,
+      "app": null
+    }
+  ]
+}

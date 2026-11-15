@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Dashboard{% endblock %} — Metering</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+</head>
+<body>
+<div class="layout">
+  <nav class="sidebar">
+    <h2>Metering</h2>
+    <a href="/dashboard/" class="{% if active == 'overview' %}active{% endif %}">Overview</a>
+    <a href="/dashboard/costs" class="{% if active == 'costs' %}active{% endif %}">Costs</a>
+    <a href="/dashboard/budgets" class="{% if active == 'budgets' %}active{% endif %}">Budgets</a>
+  </nav>
+  <main class="main">
+    {% block content %}{% endblock %}
+  </main>
+</div>
+</body>
+</html>

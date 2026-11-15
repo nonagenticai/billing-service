@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+{% block title %}Costs{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Cost Configuration</h1>
+</div>
+
+<div class="section">
+  <h3>LLM Provider Rates</h3>
+  <table>
+    <thead>
+      <tr><th>Provider</th><th>Input / 1M tokens (USD)</th><th>Output / 1M tokens (USD)</th></tr>
+    </thead>
+    <tbody>
+      {% for p in providers %}
+      <tr>
+        <td>{{ p.provider }}</td>
+        <td class="mono">${{ p.input_per_1m_usd }}</td>
+        <td class="mono">${{ p.output_per_1m_usd }}</td>
+      </tr>
+      {% endfor %}
+      {% if not providers %}
+      <tr><td colspan="3" style="text-align:center;color:var(--text-muted)">No provider rates configured</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+
+<div class="section">
+  <h3>App Cost Rates (per request)</h3>
+  <table>
+    <thead>
+      <tr><th>App Key</th><th>Cost per Request (USD)</th></tr>
+    </thead>
+    <tbody>
+      {% for a in apps %}
+      <tr>
+        <td>{{ a.app_key }}</td>
+        <td class="mono">${{ a.cost_per_request_usd }}</td>
+      </tr>
+      {% endfor %}
+      {% if not apps %}
+      <tr><td colspan="2" style="text-align:center;color:var(--text-muted)">No app rates configured</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+
+<div class="section">
+  <h3>Platform Cost Summary</h3>
+  <div class="cards">
+    <div class="card">
+      <div class="label">Total Internal Cost</div>
+      <div class="value">${{ summary.total_internal_cost_usd }}</div>
+    </div>
+    <div class="card">
+      <div class="label">Total Input Tokens</div>
+      <div class="value">{{ "{:,}".format(summary.total_input_tokens) }}</div>
+    </div>
+    <div class="card">
+      <div class="label">Total Output Tokens</div>
+      <div class="value">{{ "{:,}".format(summary.total_output_tokens) }}</div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Cost by Cost Centre (last 30 days)</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>Cost Centre</th>
+        <th>Tenants</th>
+        <th>Cost (USD)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in by_cost_centre %}
+      <tr>
+        <td>{{ c.cost_centre }}</td>
+        <td class="mono">{{ "{:,}".format(c.tenants) }}</td>
+        <td class="mono">${{ c.cost_usd }}</td>
+      </tr>
+      {% endfor %}
+      {% if not by_cost_centre %}
+      <tr><td colspan="3" style="text-align:center;color:var(--text-muted)">No tenant cost data in the last 30 days</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+  <div style="font-size:0.7rem;color:var(--text-muted);margin-top:0.5rem">
+    Cost centre comes from the licences registry (<code>cost_centre</code>, falling back to
+    <code>kind</code>). <code>unclassified</code> means the registry has not decided — or could
+    not be reached; it is never guessed from the tenant name.
+  </div>
+</div>
+
+<div class="section">
+  <h3>Tokens by Tenant (last 30 days)</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>Tenant</th>
+        <th>Cost Centre</th>
+        <th>Input Tokens</th>
+        <th>Output Tokens</th>
+        <th>Requests</th>
+        <th>Cost (USD)</th>
+        <th>Subjects</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in by_tenant %}
+      <tr>
+        <td>
+          {{ t.tenant_name }}
+          <div style="font-size:0.7rem;color:var(--text-muted);font-family:var(--mono)">{{ t.tenant_id }}</div>
+        </td>
+        <td>{{ t.cost_centre }}</td>
+        <td class="mono">{{ "{:,}".format(t.input_tokens) }}</td>
+        <td class="mono">{{ "{:,}".format(t.output_tokens) }}</td>
+        <td class="mono">{{ "{:,}".format(t.request_count) }}</td>
+        <td class="mono">${{ t.cost_usd }}</td>
+        <td class="mono">{{ "{:,}".format(t.subject_count) }}</td>
+      </tr>
+      {% endfor %}
+      {% if not by_tenant %}
+      <tr><td colspan="7" style="text-align:center;color:var(--text-muted)">No tenant cost data in the last 30 days</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+
+<div class="section">
+  <h3>Tokens by Subject (top 50, last 30 days)</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>Tenant</th>
+        <th>Subject</th>
+        <th>Input Tokens</th>
+        <th>Output Tokens</th>
+        <th>Requests</th>
+        <th>Cost (USD)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in by_subject %}
+      <tr>
+        <td>
+          {{ s.tenant_name }}
+          <div style="font-size:0.7rem;color:var(--text-muted);font-family:var(--mono)">{{ s.tenant_id }}</div>
+        </td>
+        <td class="mono">{{ s.subject_id }}</td>
+        <td class="mono">{{ "{:,}".format(s.input_tokens) }}</td>
+        <td class="mono">{{ "{:,}".format(s.output_tokens) }}</td>
+        <td class="mono">{{ "{:,}".format(s.request_count) }}</td>
+        <td class="mono">${{ s.cost_usd }}</td>
+      </tr>
+      {% endfor %}
+      {% if not by_subject %}
+      <tr><td colspan="6" style="text-align:center;color:var(--text-muted)">No subject cost data in the last 30 days</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

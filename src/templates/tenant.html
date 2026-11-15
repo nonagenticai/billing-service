@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block title %}{{ tenant_id }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>{{ tenant_id }} — {{ month }}</h1>
+  <div class="controls">
+    <input type="month" value="{{ month }}" hx-get="/dashboard/tenant/{{ tenant_id }}" hx-target="main" hx-swap="innerHTML" name="month" hx-include="this" />
+    <a href="/dashboard/" class="btn btn-outline">Back</a>
+  </div>
+</div>
+
+<div class="cards">
+  <div class="card">
+    <div class="label">Requests</div>
+    <div class="value">{{ "{:,}".format(billing.totals.total_requests) }}</div>
+  </div>
+  <div class="card">
+    <div class="label">Internal Cost</div>
+    <div class="value">${{ billing.totals.internal_cost_usd }}</div>
+  </div>
+  <div class="card">
+    <div class="label">Customer Cost</div>
+    <div class="value positive">${{ billing.totals.customer_cost_usd }}</div>
+  </div>
+  <div class="card">
+    <div class="label">Margin</div>
+    <div class="value positive">${{ billing.totals.margin_usd }}</div>
+  </div>
+  <div class="card">
+    <div class="label">Markup</div>
+    <div class="value">{{ billing.markup_pct }}%</div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Per-License Breakdown</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>License</th>
+        <th>App</th>
+        <th>Plan</th>
+        <th>Requests</th>
+        <th>LLM Cost</th>
+        <th>App Cost</th>
+        <th>Tokens (in/out)</th>
+        <th>Budget</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for lic in billing.licenses %}
+      <tr>
+        <td class="mono" style="font-size:0.75rem">{{ lic.license_id[:12] }}...</td>
+        <td>{{ lic.app_key }}</td>
+        <td>{{ lic.plan_code or '—' }}</td>
+        <td class="mono">{{ "{:,}".format(lic.usage.request_count) }}{% if lic.usage.quota_monthly is not none %} / {{ "{:,}".format(lic.usage.quota_monthly) }}{% endif %}</td>
+        <td class="mono">${{ lic.costs.llm_cost_usd }}</td>
+        <td class="mono">${{ lic.costs.app_request_cost_usd }}</td>
+        <td class="mono">{{ "{:,}".format(lic.tokens.input_tokens) }} / {{ "{:,}".format(lic.tokens.output_tokens) }}</td>
+        <td>
+          {% if lic.tokens.budget_tokens is not none %}
+          <div style="font-size:0.75rem;margin-bottom:2px">{{ lic.tokens.budget_pct or 0 }}% used</div>
+          <div class="budget-bar">
+            <div class="fill {% if (lic.tokens.budget_pct or 0) >= 90 %}red{% elif (lic.tokens.budget_pct or 0) >= 70 %}yellow{% else %}green{% endif %}" style="width:{{ [lic.tokens.budget_pct or 0, 100]|min }}%"></div>
+          </div>
+          {% else %}
+          <span style="color:var(--text-muted)">—</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      {% if not billing.licenses %}
+      <tr><td colspan="8" style="text-align:center;color:var(--text-muted)">No usage data</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+
+{% if billing.totals.cost_by_provider %}
+<div class="section">
+  <h3>Cost by Provider</h3>
+  <table>
+    <thead><tr><th>Provider</th><th>Cost (USD)</th></tr></thead>
+    <tbody>
+      {% for provider, cost in billing.totals.cost_by_provider.items() %}
+      <tr><td>{{ provider }}</td><td class="mono">${{ cost }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% if budgets %}
+<div class="section">
+  <h3>Token Budgets</h3>
+  <table>
+    <thead>
+      <tr><th>License</th><th>Period</th><th>Budget</th><th>Used</th><th>Remaining</th><th>Status</th></tr>
+    </thead>
+    <tbody>
+      {% for b in budgets %}
+      <tr>
+        <td class="mono">{{ (b.license_id or 'tenant-wide')[:12] }}{% if b.license_id %}...{% endif %}</td>
+        <td>{{ b.period }}</td>
+        <td class="mono">{{ "{:,}".format(b.budget_tokens) }}</td>
+        <td class="mono">{{ "{:,}".format(b.used_tokens) }}</td>
+        <td class="mono">{{ "{:,}".format(b.remaining_tokens) }}</td>
+        <td>
+          {% if b.over_budget %}
+          <span class="badge badge-danger">Over Budget</span>
+          {% elif b.usage_pct >= 80 %}
+          <span class="badge badge-warn">{{ b.usage_pct }}%</span>
+          {% else %}
+          <span class="badge badge-ok">{{ b.usage_pct }}%</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}

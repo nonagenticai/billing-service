@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Overview{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Platform Overview — {{ month }}</h1>
+  <div class="controls">
+    <input type="month" value="{{ month }}" hx-get="/dashboard/" hx-target="main" hx-swap="innerHTML" name="month" hx-include="this" />
+  </div>
+</div>
+
+<div class="cards">
+  <div class="card">
+    <div class="label">Total Requests</div>
+    <div class="value">{{ "{:,}".format(platform_requests) }}</div>
+  </div>
+  <div class="card">
+    <div class="label">Internal Cost</div>
+    <div class="value">${{ internal_total }}</div>
+  </div>
+  <div class="card">
+    <div class="label">Customer Revenue</div>
+    <div class="value positive">${{ customer_total }}</div>
+  </div>
+  <div class="card">
+    <div class="label">Margin</div>
+    <div class="value positive">${{ margin_total }}</div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Per-Tenant Breakdown</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>Tenant</th>
+        <th>Requests</th>
+        <th>Internal Cost</th>
+        <th>Customer Cost</th>
+        <th>Margin</th>
+        <th>Margin %</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in tenants %}
+      <tr>
+        <td><a href="/dashboard/tenant/{{ t.tenant_id }}?month={{ month }}">{{ t.tenant_id }}</a></td>
+        <td class="mono">{{ "{:,}".format(t.total_requests) }}</td>
+        <td class="mono">${{ t.internal_cost_usd }}</td>
+        <td class="mono">${{ t.customer_cost_usd }}</td>
+        <td class="mono">${{ t.margin_usd }}</td>
+        <td class="mono">{% if t.margin_pct is none %}{% if t.internal_sub_cent %}<span style="color:var(--text-muted)" title="Internal cost this month is ${{ t.internal_cost_exact_display }} — real, but under a cent, so the Internal Cost column rounds it to $0.00. A percentage here would be a ratio against a figure this page does not show, so none is given. This is not a zero-cost month.">n/a (cost &lt; $0.01)</span>{% else %}<span style="color:var(--text-muted)" title="No internal cost this month, so the margin percentage has no denominator and does not exist. This is not a measured zero.">n/a</span>{% endif %}{% else %}{{ t.margin_pct }}%{% endif %}</td>
+      </tr>
+      {% endfor %}
+      {% if not tenants %}
+      <tr><td colspan="6" style="text-align:center;color:var(--text-muted)">No billing data for {{ month }}</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
