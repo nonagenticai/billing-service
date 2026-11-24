@@ -155,7 +155,7 @@ LEGACY_TENANT_NAMES: dict[str, str] = {
     "n8n-dev": "019de842-c92a-7e37-8fdd-eb0d8c5396f9",
     "n8n-dev-portal-realm": "0195f48b-d000-7000-8000-000000000001",
     "n8n-test": "019de842-c92b-752e-b39c-30d64950e1cc",
-    "netcare": "01a139d8-18df-7000-90f1-7c60120f509e",
+    "netcare": "01a1ff14-338d-7293-93ea-28e5e17ac4b0",
     "netcare-cp": "01a13548-ab8a-7000-a2e0-497a779754a6",
     "netcare-legacy": "01a0ef72-31af-7561-936a-b8383b5fb6c8",
     "nonagentic": "019fe708-424a-7a31-bce8-da19020dc62b",
