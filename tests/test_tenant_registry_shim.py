@@ -69,8 +69,8 @@ FIXTURE = Path(__file__).parent / "fixtures" / "licenses_tenants.txt"
 #: The counts stated in ``LEGACY_TENANT_NAMES``'s own docstring. Asserted here so
 #: the prose cannot go stale the way "all 72 registered names" did over a map of
 #: 75 keys — a wrong comment is now a red test.
-DOCUMENTED_SHIM_KEYS = 116
-DOCUMENTED_REGISTRY_NAMES = 111
+DOCUMENTED_SHIM_KEYS = 165
+DOCUMENTED_REGISTRY_NAMES = 160
 DOCUMENTED_RETIRED_SPELLINGS = 5
 
 
