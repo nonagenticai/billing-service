@@ -1523,6 +1523,29 @@ rollup_lag_days = Gauge(
     ["table"],
 )
 
+rollup_unrolled_source_days = Gauge(
+    "billing_rollup_unrolled_source_days",
+    "Closed days in [floor, yesterday] that HAVE source rows but NO daily row, "
+    "per table; set by services.rollup_engine.unrolled_source_days on every "
+    "daily pass. THE QUESTION THIS ANSWERS, WHICH NEITHER SIBLING CAN: "
+    "billing_rollup_lag_days and billing_rollup_date_gaps are both derived from "
+    "the DAILY TABLE's own span, so a day on which nothing was billed makes the "
+    "lag grow and the gap count tick up with no defect at all -- measured "
+    "2026-11-26, metering_daily read lag=2 because billing_metering_events held "
+    "ZERO rows for 2026-11-25, while 285 rollup cycles ran in 24h and catch-up "
+    "remaining was 0. Zero here on a legitimately empty day; non-zero ONLY when "
+    "a closed day that has source rows lacks its aggregate. That makes it the "
+    "one rollup gauge an alert can gate on without crying wolf. "
+    "⚠️ DO NOT PRE-CREATE THE CHILDREN. A labelled Gauge publishes nothing until "
+    "a child exists, and that is deliberately the state before the first pass: "
+    "the alerting gate is `unless (... == 0)`, so an unpublished 0 must not read "
+    "as 'healthy' before anything has been measured -- absent here means the "
+    "gate is inert and the older alerts keep their previous behaviour. "
+    "AGGREGATE WITH max(), NEVER sum(): leadership handover, as with its "
+    "siblings.",
+    ["table"],
+)
+
 metering_hourly_lag_hours = Gauge(
     "billing_metering_hourly_lag_hours",
     "Hours between the last CLOSED UTC hour and the NEWEST bucket_hour in "

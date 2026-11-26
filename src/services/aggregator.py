@@ -60,6 +60,7 @@ from services.rollup_engine import (
     rollup_daily,
     rollup_hourly,
     trim_stream,
+    unrolled_source_days,
 )
 from services.tenant_id_divergence import run_tenant_id_divergence_audit
 from services.unregistered_tenant_spend import publish_unregistered_tenant_spend
@@ -142,6 +143,7 @@ __all__ = [
     "purge_old_usage_rollup",
     "rollup_daily",
     "rollup_hourly",
+    "unrolled_source_days",
     "run_flush_loop",
     "run_rollup_loop",
     "trim_stream",
@@ -785,6 +787,18 @@ async def run_rollup_loop(
                     await daily_rollup_lag_days(session_factory)
                 except Exception:
                     logger.warning("daily_rollup_lag_scan_failed", exc_info=True)
+
+                # The PRECISE head signal, next to the lag it disambiguates:
+                # lag counts days between today and the newest daily row, which
+                # also grows on a legitimately EMPTY source day. This counts the
+                # closed days that have source rows but no aggregate -- the only
+                # shape that is a missed rollup. The rollup alerts gate on it.
+                # Same suppression rule as its siblings: a measurement must never
+                # abort the rollups it rides with.
+                try:
+                    await unrolled_source_days(session_factory, floor)
+                except Exception:
+                    logger.warning("daily_rollup_unrolled_scan_failed", exc_info=True)
 
                 # Actor-axis cardinality (billing_cost_actor_daily_distinct_actors).
                 # REPORTING ONLY, same suppression rule as its siblings above/below: a

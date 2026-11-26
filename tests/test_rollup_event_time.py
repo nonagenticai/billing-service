@@ -387,11 +387,21 @@ def test_the_resolved_expression_is_one_shared_object() -> None:
         "It is sound because parse_event_ts refuses a future event_ts, so "
         "event_ts <= created_at for every stored row"
     )
-    gaps = inspect.getsource(re_mod.missing_daily_dates)
-    assert 'func.cast(func.timezone("UTC", cost_event_time), Date)' in gaps, (
-        "the gap detector still asks on created_at while rollup_daily writes "
-        "buckets by event time — it would report permanent phantom gaps"
+    # The two source-derived day sets -- the REPAIR list (missing_daily_dates)
+    # and the GAUGE (unrolled_source_days) -- are built by ONE helper. This used
+    # to inspect missing_daily_dates directly; the helper is now the only place
+    # the shared expression can live, so both callers are pinned to it and a
+    # future edit cannot fork the repair list from the gauge.
+    shared = inspect.getsource(re_mod._source_day_queries)
+    assert 'func.cast(func.timezone("UTC", cost_event_time), Date)' in shared, (
+        "the source-day detector still asks on created_at while rollup_daily "
+        "writes buckets by event time — it would report permanent phantom gaps"
     )
+    for caller in (re_mod.missing_daily_dates, re_mod.unrolled_source_days):
+        assert "_source_day_queries(" in inspect.getsource(caller), (
+            f"{caller.__name__} no longer builds its day set from the one shared "
+            "expression — the repair list and the gauge can now disagree"
+        )
 
 
 @pytest.mark.unit

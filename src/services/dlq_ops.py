@@ -514,6 +514,21 @@ async def sample_oldest_age(redis_conn: aioredis.Redis, stream: str) -> None:
     gauge.set(age_seconds)
 
 
+#: Tenant literals an EMITTER writes when it has no tenant at all. These are the
+#: one class of unresolved tenant that can never become attributable: registering
+#: one as a real tenant would silently turn an unauthenticated call into a
+#: billable customer, which is exactly what the product ruling on asr-backend
+#: forbids. A legacy SLUG is different — registering it in LEGACY_TENANT_NAMES
+#: makes the event attributable again — and is still refused below.
+#:
+#: Measured 2026-11-26: asr-backend's Rust port writes ``unauthenticated``
+#: whenever its licence gate is disabled
+#: (``rust/asr-backend-rs/src/auth.rs::LicenceGate::authenticate``), and its
+#: cost event carried no provider either, so the entry is zero-cost, unattributable
+#: and undrainable by replay or re-attribute. Keep this set EXACT and lowercase.
+EMITTER_SENTINEL_TENANTS: frozenset[str] = frozenset({"unauthenticated"})
+
+
 def _discard_refusal(fields: dict[str, str]) -> str | None:
     """Return a low-cardinality refusal reason, or ``None`` if the entry may be
     discarded. Refuse-by-default: every path that cannot PROVE both conditions
@@ -582,6 +597,13 @@ def _discard_refusal(fields: dict[str, str]) -> str | None:
         return None
     resolved_tenant = canonical_tenant_id(raw_tenant)
     if resolved_tenant is None:
+        # An emitter sentinel ("unauthenticated") is unattributable FOR GOOD --
+        # no operator action can turn it into a tenant, so it carries the same
+        # "provably unattributable" property as the nil tenant above. Every other
+        # unresolved string stays refused: it may be a legacy slug that a
+        # registration would make attributable again.
+        if str(raw_tenant).strip().lower() in EMITTER_SENTINEL_TENANTS:
+            return None
         return "tenant_unresolved"
     if resolved_tenant != NIL_TENANT_ID:
         return "tenant_attributable"

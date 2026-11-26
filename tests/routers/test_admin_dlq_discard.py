@@ -193,6 +193,46 @@ class TestDiscardRefusesIneligible:
         assert result.discarded == []
         assert await _stream_ids(fake_redis) == [dead_id]
 
+    async def test_an_emitter_sentinel_at_zero_cost_is_eligible(self, fake_redis) -> None:
+        """The one unresolved tenant that can never become attributable.
+
+        ``unauthenticated`` is what an emitter writes when it has NO tenant at all
+        (asr-backend's Rust gate-disabled path). Registering it as a real tenant
+        would silently turn an unauthenticated call into a billable customer, so
+        no operator action can recover the attribution -- the same property that
+        makes the nil tenant discardable. Measured live 2026-11-26: the standing
+        asr-backend fossil is exactly this shape.
+        """
+        dead_id = await _seed_dead(
+            fake_redis,
+            tenant_id="unauthenticated",
+            reason="missing_provider",
+            cost_usd="0.0",
+        )
+
+        result = await discard_dlq(
+            fake_redis,
+            ids=[dead_id],
+            reason="zero-cost sentinel-tenant fossil from the pre-fix ASR emitter",
+            confirm=True,
+        )
+
+        assert result.eligible == [dead_id]
+        assert result.discarded == [dead_id]
+        assert await _stream_ids(fake_redis) == []
+
+    async def test_an_emitter_sentinel_with_nonzero_cost_is_still_refused(self, fake_redis) -> None:
+        """The sentinel widens WHO may be unattributable, never the money gate."""
+        dead_id = await _seed_dead(fake_redis, tenant_id="unauthenticated", cost_usd="0.42")
+
+        result = await discard_dlq(
+            fake_redis, ids=[dead_id], reason="drain nil-tenant backlog", confirm=True
+        )
+
+        assert result.refused == [{"id": dead_id, "reason": "cost_usd_nonzero"}]
+        assert result.discarded == []
+        assert await _stream_ids(fake_redis) == [dead_id]
+
     async def test_refuses_absent_cost(self, fake_redis) -> None:
         """An absent cost is NOT read as zero: a value that cannot be read is a
         value that cannot be ruled out."""
