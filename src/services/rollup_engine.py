@@ -1205,6 +1205,21 @@ async def missing_daily_dates(
     the bucket. Report, do not repair.
     """
     yesterday = datetime.now(UTC).date() - timedelta(days=1)
+    m_src, c_src = _source_day_queries(floor, yesterday)
+    async with session_factory() as session:
+        result = await session.execute(union(m_src, c_src))
+    return sorted(row[0] for row in result.all())
+
+
+def _source_day_queries(floor: date, yesterday: date):
+    """The two per-table "has source rows, has no daily row" selects.
+
+    Extracted so :func:`missing_daily_dates` (the REPAIR list) and
+    :func:`unrolled_source_days` (the GAUGE) can never disagree about which days
+    are un-rolled — a gauge that reported a different set from the repair list
+    would either page on days the roller refuses to touch or stay silent on days
+    it silently skips.
+    """
     # UTC-explicit buckets so the gap-detector's day set matches what rollup_daily
     # writes (and the UTC `yesterday`/`floor` bounds) regardless of session TZ.
     m_day = func.cast(func.timezone("UTC", MeteringHourly.bucket_hour), Date)
@@ -1226,9 +1241,45 @@ async def missing_daily_dates(
         .where(c_day >= floor, c_day <= yesterday, CostEvent.excluded_from_billing.is_(False))
         .group_by(c_day)
     ).except_(select(CostDaily.bucket_date))
+    return m_src, c_src
+
+
+async def unrolled_source_days(
+    session_factory: async_sessionmaker[AsyncSession],
+    floor: date,
+    now: datetime | None = None,
+) -> dict[str, int]:
+    """Closed source days with NO daily row, per table. REPORTING ONLY.
+
+    The precise companion to :func:`daily_rollup_lag_days` and
+    :func:`daily_rollup_date_gaps`. Both of those are derived from the daily
+    table's own span, so a day on which nothing was ever billed makes the lag
+    grow and the gap count tick up with no defect at all — measured 2026-11-26:
+    ``metering_daily`` read lag=2 because ``billing_metering_events`` held ZERO
+    rows for 2026-11-25, while 285 rollup cycles ran in 24h and the catch-up
+    backlog was 0. This answers the question those two structurally cannot: does
+    a closed day WITH source rows lack its aggregate?
+
+    Writes ``billing_rollup_unrolled_source_days{table}`` and returns the same
+    counts. It never rolls, inserts or deletes anything: handing these dates to
+    :func:`rollup_daily` is exactly what :func:`missing_daily_dates` warns
+    against, and the gauge is only a measurement of that same set.
+    """
+    yesterday = (now or datetime.now(UTC)).date() - timedelta(days=1)
+    m_src, c_src = _source_day_queries(floor, yesterday)
+    counts = {"cost_daily": 0, "metering_daily": 0}
     async with session_factory() as session:
-        result = await session.execute(union(m_src, c_src))
-    return sorted(row[0] for row in result.all())
+        counts["metering_daily"] = len((await session.execute(m_src)).all())
+        counts["cost_daily"] = len((await session.execute(c_src)).all())
+
+    try:
+        from observability.metrics import rollup_unrolled_source_days as _gauge
+
+        for table, value in counts.items():
+            _gauge.labels(table=table).set(value)
+    except Exception:  # pragma: no cover - observability must not break the loop
+        logger.warning("rollup unrolled-source-days gauge not published", exc_info=True)
+    return counts
 
 
 @dataclass(frozen=True)

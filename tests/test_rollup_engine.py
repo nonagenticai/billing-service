@@ -2289,3 +2289,85 @@ class TestDailyRollupDateGaps:
         assert om.rollup_date_gaps.labels(table="cost_daily")._value.get() == len(
             gaps["cost_daily"]
         )
+
+
+class TestUnrolledSourceDays:
+    """The precise "a SOURCE day has no daily row" signal.
+
+    Its entire reason to exist is the case the two older gauges get wrong: a day
+    with ZERO source rows must report 0, not look like a missed rollup. Measured
+    in production 2026-11-26: metering_daily read lag=2 because
+    billing_metering_events held zero rows for 2026-11-25, while the rollup was
+    healthy.
+    """
+
+    @staticmethod
+    def _day(days_ago: int) -> date:
+        return (datetime.now(UTC) - timedelta(days=days_ago)).date()
+
+    async def _seed_source_day(self, db_session_factory, tenant: str, day: date) -> None:
+        async with db_session_factory() as session:
+            session.add(
+                CostEvent(
+                    tenant_id=tenant,
+                    service_key="inference-router",  # pragma: allowlist secret
+                    provider="claude",
+                    input_tokens=10,
+                    output_tokens=5,
+                    cost_usd=Decimal("0.01"),
+                    created_at=datetime(day.year, day.month, day.day, 12, tzinfo=UTC),
+                )
+            )
+            await session.commit()
+
+    @pytest.mark.unit
+    async def test_a_source_day_with_no_daily_row_counts_as_unrolled(self, db_session_factory):
+        from services.rollup_engine import unrolled_source_days
+
+        await self._seed_source_day(db_session_factory, T("unrolled-cost"), self._day(2))
+
+        counts = await unrolled_source_days(db_session_factory, self._day(30))
+
+        assert counts["cost_daily"] == 1
+        assert counts["metering_daily"] == 0
+
+    @pytest.mark.unit
+    async def test_a_rolled_source_day_counts_as_zero(self, db_session_factory):
+        from services.rollup_engine import rollup_daily, unrolled_source_days
+
+        day = self._day(2)
+        await self._seed_source_day(db_session_factory, T("unrolled-rolled"), day)
+        await rollup_daily(db_session_factory, day)
+
+        counts = await unrolled_source_days(db_session_factory, self._day(30))
+
+        assert counts == {"cost_daily": 0, "metering_daily": 0}
+
+    @pytest.mark.unit
+    async def test_an_empty_source_day_is_not_unrolled(self, db_session_factory):
+        """THE CASE THAT MOTIVATED THE GAUGE. An idle day has no source rows, so
+        there is nothing to roll; the lag/gap gauges cannot say that, this one
+        can."""
+        from services.rollup_engine import unrolled_source_days
+
+        counts = await unrolled_source_days(db_session_factory, self._day(30))
+
+        assert counts == {"cost_daily": 0, "metering_daily": 0}
+
+    @pytest.mark.unit
+    async def test_the_gauge_carries_the_count(self, db_session_factory):
+        """The alert gate reads the GAUGE, not the return value — a return-only
+        test would pass while the rule stayed blind."""
+        import observability.metrics as om
+        from services.rollup_engine import unrolled_source_days
+
+        await self._seed_source_day(db_session_factory, T("unrolled-gauge"), self._day(2))
+
+        counts = await unrolled_source_days(db_session_factory, self._day(30))
+
+        assert (
+            om.rollup_unrolled_source_days.labels(table="cost_daily")._value.get()
+            == counts["cost_daily"]
+            == 1
+        )
+        assert om.rollup_unrolled_source_days.labels(table="metering_daily")._value.get() == 0
