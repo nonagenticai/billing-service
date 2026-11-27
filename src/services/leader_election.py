@@ -147,6 +147,17 @@ _RELEASE_TIMEOUT_S: float = 5.0
 # cost the session. Lowering it is safe; raising it past ~290s is not.
 _KEEPALIVE_INTERVAL_S: float = 240.0
 
+#: Client-side bound on ONE round-trip over the dedicated lock connection.
+#: A half-open TCP connection (a node reboot, dropped NAT state) leaves the
+#: await blocked in the kernel: the server never receives the query, so NO
+#: server-side timeout (``statement_timeout``, ``idle_session_timeout``) can
+#: fire. Measured 2026-11-26 after the four-node reboot: a billing replica hung
+#: in ``SELECT pg_backend_pid()`` on a half-open connection, never demoted, and
+#: two ``billing_rollup_is_leader=1`` series coexisted while only one backend
+#: held the advisory lock. 10s is orders of magnitude above the sub-millisecond
+#: query; on timeout the existing error arm demotes and hard-closes the session.
+_QUERY_TIMEOUT_S: float = 10.0
+
 # ``loop`` label for billing_leader_keepalive_failures_total, and the ``loop=``
 # log field. Keyed by lock key so EVERY caller gets a correct label with no
 # wiring — a metric that silently labelled all five loops "async" would make the
@@ -350,7 +361,10 @@ class AsyncLeaderElection:
             return False
         try:
             async with self._conn_lock:
-                return await self._check_locked()
+                # Bounded: a half-open connection must demote, not hang forever
+                # (see _QUERY_TIMEOUT_S). TimeoutError is an OSError subclass, so
+                # it lands in the demote + _reset_conn() arm below.
+                return await asyncio.wait_for(self._check_locked(), timeout=_QUERY_TIMEOUT_S)
         except SQLAlchemyError, psycopg.Error, OSError:
             # Any conn-layer issue = treat as lost leadership. _reset_conn()
             # INVALIDATES the connection (hard-closes the session), which is what
@@ -524,7 +538,7 @@ class AsyncLeaderElection:
                     # were queued on it.
                     if not self._held or self._conn is None:
                         return
-                    if not await self._ping_locked():
+                    if not await asyncio.wait_for(self._ping_locked(), timeout=_QUERY_TIMEOUT_S):
                         return
         except asyncio.CancelledError:
             raise
