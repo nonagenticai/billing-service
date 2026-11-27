@@ -257,17 +257,58 @@ async def inspect_dlq(
     return DlqInspectResponse(entries=entries, count=len(entries), has_more=has_more)
 
 
+#: Business fields an operator may supply when replaying ONE entry whose stored
+#: payload the emitter wrote without them. This is the drain for a zero-cost,
+#: REAL-tenant, ``missing_provider`` entry: discard refuses it
+#: (``tenant_attributable``) and plain replay re-rejects the stored fields.
+#:
+#: ⛔ ``tenant_id`` is NOT here — use :func:`reattribute_dlq`, which has its own
+#: receipt and nil-tenant rules. ⛔ ``cost_usd`` is NOT here — billing recomputes
+#: the authoritative cost from ``provider_pricing``; a wire cost is advisory, and
+#: letting an operator rewrite it would be a money defect.
+REPLAY_OVERRIDE_FIELDS: frozenset[str] = frozenset(
+    {
+        "provider",
+        "service_key",
+        "model",
+        "input_tokens",
+        "output_tokens",
+        "quantity",
+        "unit",
+        "latency_ms",
+    }
+)
+
+
 async def replay_dlq(
     redis_conn: aioredis.Redis,
     *,
     ids: list[str],
     delete_on_success: bool = True,
+    overrides: Mapping[str, str] | None = None,
 ) -> DlqReplayResult:
     """Replay the given dead-letter ids back onto ``billing:costs``.
 
     See the module docstring for the three safety guards. Returns the aggregated
     outcome; a caller is expected to audit-log the result.
+
+    ``overrides`` supplies fields the stored payload is missing, applied AFTER
+    quarantine reversal and BEFORE re-validation. It is for the one class neither
+    replay nor discard can drain by itself: a zero-cost entry with a real tenant
+    whose emitter omitted a mandatory contract field (e.g. ``provider``). The
+    caller is responsible for the single-id + reason policy (enforced in the
+    route); this function only enforces the field allowlist. The idempotency
+    marker is still keyed on the ORIGINAL event id, never on the repaired
+    payload, so a repeated call cannot double-bill.
     """
+    if overrides is not None:
+        if len(ids) != 1:
+            raise ValueError("overrides apply to exactly one id")
+        unknown = sorted(set(overrides) - REPLAY_OVERRIDE_FIELDS)
+        if unknown:
+            raise ValueError(
+                f"overrides may not set {unknown}; allowed: {sorted(REPLAY_OVERRIDE_FIELDS)}"
+            )
     settings = get_settings()
     dead_stream = settings.cost_dead_letter_stream
     costs_stream = settings.costs_stream
@@ -309,6 +350,17 @@ async def replay_dlq(
 
             # (c) Reverse the quarantine.
             cleaned = _business_fields(fields)
+
+            # (c2) Apply operator-supplied contract fields the emitter omitted.
+            # Deliberately AFTER the marker was claimed from the ORIGINAL fields:
+            # idempotency is keyed on the event, never on the repaired payload.
+            if overrides:
+                cleaned.update({key: str(value) for key, value in overrides.items()})
+                logger.info(
+                    "dlq_replay_overrides_applied",
+                    entry_id=entry_id,
+                    overrides=dict(overrides),
+                )
 
             # (d) Re-validate. STILL malformed => leave on the dead stream, release
             # the marker so a real fix can retry, and NEVER re-inject. This is the

@@ -1978,7 +1978,7 @@
         "type": "object"
       },
       "DlqReplayRequest": {
-        "description": "Operator request to replay specific dead-letter entries by stream id.\n\n``delete_on_success`` defaults to **True**: a successfully re-injected entry\nis removed from ``billing:costs:dead`` so a second replay is a no-op and the\nstream shrinks as it is drained. Set False to re-inject while leaving the\nquarantine record in place (audit / dry-drain).",
+        "description": "Operator request to replay specific dead-letter entries by stream id.\n\n``delete_on_success`` defaults to **True**: a successfully re-injected entry\nis removed from ``billing:costs:dead`` so a second replay is a no-op and the\nstream shrinks as it is drained. Set False to re-inject while leaving the\nquarantine record in place (audit / dry-drain).\n\n``overrides`` is the drain for a class neither plain replay nor discard can\ntake: a zero-cost entry with a **real tenant** that the emitter omitted a\nmandatory contract field from (typically ``provider``). Replay of the stored\npayload re-rejects it identically, and discard refuses it\n(``tenant_attributable``) because the tenant can be billed. The operator\nsupplies exactly what the FIXED emitter would have sent, for a single id,\nwith a mandatory ``reason`` that lands in the audit row. Keys are\nallowlisted by ``services.dlq_ops.REPLAY_OVERRIDE_FIELDS``; ``tenant_id``\n(use ``/dlq/reattribute``) and ``cost_usd`` (billing recomputes it from\n``provider_pricing``) are deliberately not overridable.",
         "properties": {
           "delete_on_success": {
             "default": true,
@@ -1993,6 +1993,33 @@
             "minItems": 1,
             "title": "Ids",
             "type": "array"
+          },
+          "overrides": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Business fields to set on the stored payload before re-validation. Single id only; allowlisted keys; requires reason.",
+            "title": "Overrides"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why these are the fields the fixed emitter would have sent. Required with overrides; recorded in the audit row.",
+            "title": "Reason"
           }
         },
         "required": [
@@ -7942,7 +7969,7 @@
     },
     "/api/admin/dlq/replay": {
       "post": {
-        "description": "Re-inject the requested dead-letter ids onto the live cost stream \u2014 the\nsecond half of the runbook, run once the malformed condition is fixed.\n\nSafe to run under pressure: each id is idempotency-claimed before any XADD,\nan entry that still fails validation is left quarantined (never looped back),\nand one bad entry never aborts the batch. Exactly one audit row per\ninvocation records who replayed what and the outcome.",
+        "description": "Re-inject the requested dead-letter ids onto the live cost stream \u2014 the\nsecond half of the runbook, run once the malformed condition is fixed.\n\nSafe to run under pressure: each id is idempotency-claimed before any XADD,\nan entry that still fails validation is left quarantined (never looped back),\nand one bad entry never aborts the batch. Exactly one audit row per\ninvocation records who replayed what and the outcome.\n\n``overrides`` is the drain for a zero-cost entry with a REAL tenant that the\nemitter wrote without a mandatory contract field (typically ``provider``):\ndiscard refuses it as ``tenant_attributable`` and plain replay re-rejects\nthe stored payload. It is confined to ONE id, to allowlisted business\nfields, and requires a ``reason``; all three are recorded in the audit row.",
         "operationId": "admin_dlq_replay",
         "requestBody": {
           "content": {
