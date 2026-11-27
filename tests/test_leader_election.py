@@ -232,6 +232,64 @@ class TestAsyncLeaderElection:
             await e.release()
 
     @pytest.mark.unit
+    async def test_is_leader_times_out_and_demotes(self, lock_key: int, monkeypatch):
+        """A half-open connection must demote within the client timeout, not hang.
+
+        Measured 2026-11-26 after the node reboots: a replica hung in ``SELECT
+        pg_backend_pid()`` on a half-open TCP connection, never demoted, and two
+        ``billing_rollup_is_leader=1`` series coexisted while only one backend
+        held the lock. The server never sees the query, so no server-side
+        timeout can fire; the bound must be client-side.
+        """
+        import services.leader_election as le
+
+        e = AsyncLeaderElection(_LIBPQ_TEST_DSN, lock_key)
+        try:
+            assert await e.is_leader() is True
+
+            async def _hang():
+                await asyncio.sleep(60)
+
+            monkeypatch.setattr(le, "_QUERY_TIMEOUT_S", 0.05)
+            monkeypatch.setattr(e, "_check_locked", _hang)
+
+            started = asyncio.get_running_loop().time()
+            assert await e.is_leader() is False
+            elapsed = asyncio.get_running_loop().time() - started
+            assert elapsed < 1.0, f"is_leader must time out, took {elapsed:.2f}s"
+            assert e._held is False
+        finally:
+            await e.release()
+
+    @pytest.mark.unit
+    async def test_keepalive_times_out_and_demotes(self, lock_key: int, monkeypatch):
+        """The background keepalive is bounded by the same timeout.
+
+        It is the ONLY thing pinging a held session between ticks; a wedged ping
+        here must demote loudly rather than silently keeping a dead leader.
+        """
+        import services.leader_election as le
+
+        e = AsyncLeaderElection(_LIBPQ_TEST_DSN, lock_key, keepalive_interval_s=0.01)
+        try:
+            assert await e.is_leader() is True
+
+            async def _hang():
+                await asyncio.sleep(60)
+
+            monkeypatch.setattr(le, "_QUERY_TIMEOUT_S", 0.05)
+            monkeypatch.setattr(e, "_ping_locked", _hang)
+
+            # The keepalive task ends on the timeout (it does not loop after a
+            # demotion); awaiting it is deterministic, unlike a sleep-poll loop.
+            task = e._keepalive_task
+            assert task is not None
+            await asyncio.wait_for(task, timeout=2.0)
+            assert e._held is False, "keepalive timeout must demote"
+        finally:
+            await e.release()
+
+    @pytest.mark.unit
     async def test_only_one_of_two_acquires(self, lock_key: int):
         a = AsyncLeaderElection(_LIBPQ_TEST_DSN, lock_key)
         b = AsyncLeaderElection(_LIBPQ_TEST_DSN, lock_key)
