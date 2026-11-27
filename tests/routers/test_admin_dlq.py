@@ -206,6 +206,131 @@ class TestDlqReplay:
         # now pass vacuously and stop testing the release at all.
         assert await fake.get("dlq:replayed:orig:10-1") is None
 
+    async def test_replay_overrides_repair_a_real_tenant_missing_provider(
+        self, dlq_env, db_session, admin_actor
+    ) -> None:
+        """The class neither plain replay nor discard can drain: zero cost, a
+        REAL tenant, and a mandatory contract field the emitter omitted. The
+        operator supplies what the fixed emitter would have sent, with a reason;
+        the entry is re-injected with those fields and audited."""
+        client, fake = dlq_env
+        dead_id = await _seed_dead(fake, provider="", reason="missing_provider")
+        overrides = {
+            "provider": "mlx-whisper",
+            "service_key": "w2v-asr",
+            "input_tokens": "5",
+            "output_tokens": "0",
+        }
+        reason = (
+            "pre-fix asr emitter omitted provider; fields restored from the ASR wire "
+            "contract (4.985 s -> 5 whole seconds)"
+        )
+
+        resp = client.post(
+            "/api/admin/dlq/replay",
+            json={"ids": [dead_id], "overrides": overrides, "reason": reason},
+        )
+        assert resp.status_code == 200, resp.text
+        data = resp.json()["data"]
+        assert data["replayed"] == [dead_id]
+        assert data["still_malformed"] == []
+        assert data["deleted_from_dlq"] == [dead_id]
+
+        live = await fake.xrange(COSTS_STREAM)
+        assert len(live) == 1
+        _live_id, live_fields = live[0]
+        for key, value in overrides.items():
+            assert live_fields[key] == value
+        assert not any(k.startswith("_dlq_") for k in live_fields)
+        assert await fake.xrange(DEAD_STREAM) == []
+
+        audits = list(
+            (
+                await db_session.execute(
+                    select(AuditLog).where(AuditLog.action == "admin.dlq_replay")
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(audits) == 1
+        assert audits[0].before["overrides"] == overrides
+        assert audits[0].before["reason"] == reason
+
+    async def test_replay_overrides_require_exactly_one_id(self, dlq_env, admin_actor) -> None:
+        client, fake = dlq_env
+        first = await _seed_dead(fake, provider="", reason="missing_provider", original_id="a")
+        second = await _seed_dead(fake, provider="", reason="missing_provider", original_id="b")
+
+        resp = client.post(
+            "/api/admin/dlq/replay",
+            json={
+                "ids": [first, second],
+                "overrides": {"provider": "mlx-whisper"},
+                "reason": "operator-supplied provider for the pre-fix emitter",
+            },
+        )
+        assert resp.status_code == 422, resp.text
+        assert await fake.xrange(COSTS_STREAM) == []
+        assert len(await fake.xrange(DEAD_STREAM)) == 2
+
+    async def test_replay_overrides_reject_unknown_field(self, dlq_env, admin_actor) -> None:
+        client, fake = dlq_env
+        dead_id = await _seed_dead(fake, provider="", reason="missing_provider")
+
+        resp = client.post(
+            "/api/admin/dlq/replay",
+            json={
+                "ids": [dead_id],
+                "overrides": {"cost_usd": "0.0014"},
+                "reason": "trying to rewrite money is exactly what this must refuse",
+            },
+        )
+        assert resp.status_code == 422, resp.text
+        assert await fake.xrange(COSTS_STREAM) == []
+
+    async def test_replay_overrides_require_reason(self, dlq_env, admin_actor) -> None:
+        client, fake = dlq_env
+        dead_id = await _seed_dead(fake, provider="", reason="missing_provider")
+
+        resp = client.post(
+            "/api/admin/dlq/replay",
+            json={"ids": [dead_id], "overrides": {"provider": "mlx-whisper"}},
+        )
+        assert resp.status_code == 422, resp.text
+        assert await fake.xrange(COSTS_STREAM) == []
+
+    async def test_replay_override_that_still_fails_stays_malformed(
+        self, dlq_env, admin_actor
+    ) -> None:
+        """An override that does not actually fix the entry is held to the same
+        guard as plain replay: quarantined, reported, never injected."""
+        client, fake = dlq_env
+        dead_id = await _seed_dead(fake, provider="", reason="missing_provider")
+
+        resp = client.post(
+            "/api/admin/dlq/replay",
+            json={
+                "ids": [dead_id],
+                "overrides": {"provider": ""},
+                "reason": "deliberately still invalid: the guard must hold",
+            },
+        )
+        assert resp.status_code == 200, resp.text
+        data = resp.json()["data"]
+        assert data["replayed"] == []
+        assert data["still_malformed"] == [{"id": dead_id, "reason": "missing_provider"}]
+        assert await fake.xrange(COSTS_STREAM) == []
+        assert len(await fake.xrange(DEAD_STREAM)) == 1
+
+    async def test_replay_service_rejects_unknown_override(self, fake_redis) -> None:
+        with pytest.raises(ValueError, match="overrides may not set"):
+            await replay_dlq(fake_redis, ids=["1-0"], overrides={"tenant_id": "someone-else"})
+
+    async def test_replay_service_rejects_multi_id_overrides(self, fake_redis) -> None:
+        with pytest.raises(ValueError, match="exactly one id"):
+            await replay_dlq(fake_redis, ids=["1-0", "2-0"], overrides={"provider": "mlx-whisper"})
+
     async def test_replay_idempotent_on_rerun(self, dlq_env, admin_actor) -> None:
         """Replaying the same id twice re-injects exactly once; the second run
         reports already_processed (delete_on_success=False keeps the entry so the

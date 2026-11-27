@@ -1721,10 +1721,35 @@ class DlqReplayRequest(BaseModel):
     is removed from ``billing:costs:dead`` so a second replay is a no-op and the
     stream shrinks as it is drained. Set False to re-inject while leaving the
     quarantine record in place (audit / dry-drain).
+
+    ``overrides`` is the drain for a class neither plain replay nor discard can
+    take: a zero-cost entry with a **real tenant** that the emitter omitted a
+    mandatory contract field from (typically ``provider``). Replay of the stored
+    payload re-rejects it identically, and discard refuses it
+    (``tenant_attributable``) because the tenant can be billed. The operator
+    supplies exactly what the FIXED emitter would have sent, for a single id,
+    with a mandatory ``reason`` that lands in the audit row. Keys are
+    allowlisted by ``services.dlq_ops.REPLAY_OVERRIDE_FIELDS``; ``tenant_id``
+    (use ``/dlq/reattribute``) and ``cost_usd`` (billing recomputes it from
+    ``provider_pricing``) are deliberately not overridable.
     """
 
     ids: list[str] = Field(min_length=1, description="Dead-letter stream ids to replay.")
     delete_on_success: bool = True
+    overrides: dict[str, str] | None = Field(
+        default=None,
+        description=(
+            "Business fields to set on the stored payload before re-validation. "
+            "Single id only; allowlisted keys; requires reason."
+        ),
+    )
+    reason: str | None = Field(
+        default=None,
+        description=(
+            "Why these are the fields the fixed emitter would have sent. "
+            "Required with overrides; recorded in the audit row."
+        ),
+    )
 
 
 class DlqReplayResult(BaseModel):

@@ -29,6 +29,7 @@ from redis_client import get_redis
 from services.admin_aggregate import resolve_window, system_usage
 from services.audit import record as audit_record
 from services.dlq_ops import (
+    REPLAY_OVERRIDE_FIELDS,
     ReattributeTargetError,
     discard_dlq,
     inspect_dlq,
@@ -191,15 +192,47 @@ async def admin_dlq_replay(
     an entry that still fails validation is left quarantined (never looped back),
     and one bad entry never aborts the batch. Exactly one audit row per
     invocation records who replayed what and the outcome.
+
+    ``overrides`` is the drain for a zero-cost entry with a REAL tenant that the
+    emitter wrote without a mandatory contract field (typically ``provider``):
+    discard refuses it as ``tenant_attributable`` and plain replay re-rejects
+    the stored payload. It is confined to ONE id, to allowlisted business
+    fields, and requires a ``reason``; all three are recorded in the audit row.
     """
     if redis_conn is None:
         raise HTTPException(status_code=503, detail="redis unavailable")
 
-    result = await replay_dlq(
-        redis_conn,
-        ids=body.ids,
-        delete_on_success=body.delete_on_success,
-    )
+    if body.overrides:
+        if len(body.ids) != 1:
+            raise HTTPException(
+                status_code=422,
+                detail="overrides apply to exactly one id; split the request",
+            )
+        unknown = sorted(set(body.overrides) - REPLAY_OVERRIDE_FIELDS)
+        if unknown:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"overrides may not set {unknown}; allowed: {sorted(REPLAY_OVERRIDE_FIELDS)}"
+                ),
+            )
+        if body.reason is None or not body.reason.strip():
+            raise HTTPException(
+                status_code=422,
+                detail="overrides require a non-blank reason (recorded in the audit row)",
+            )
+
+    try:
+        result = await replay_dlq(
+            redis_conn,
+            ids=body.ids,
+            delete_on_success=body.delete_on_success,
+            overrides=body.overrides,
+        )
+    except ValueError as exc:
+        # The route above validates the allowlist; the service re-checks so a
+        # direct caller cannot bypass it. Surface it as a request error, not 500.
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     await audit_record(
         session,
@@ -211,6 +244,8 @@ async def admin_dlq_replay(
         before={
             "requested_ids": body.ids,
             "delete_on_success": body.delete_on_success,
+            "overrides": body.overrides,
+            "reason": body.reason,
         },
         after={
             "replayed": result.replayed,
